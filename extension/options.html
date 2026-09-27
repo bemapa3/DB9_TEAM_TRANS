@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>DB9 Team Translator — Cài đặt</title>
+<style>
+  body{font-family:"Segoe UI",sans-serif;max-width:640px;margin:32px auto;padding:0 16px;color:#1f2937;background:#f8fafc}
+  h1{font-size:20px;color:#0078d4;margin-bottom:4px}
+  .card{background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:16px 18px;margin:14px 0}
+  label{display:block;font-weight:600;font-size:13px;margin:10px 0 4px}
+  input{width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:14px}
+  button{margin-top:12px;margin-right:8px;padding:8px 16px;border:0;border-radius:6px;background:#0078d4;color:#fff;font-weight:600;cursor:pointer}
+  button.sec{background:#e2e8f0;color:#1f2937}
+  .muted{color:#64748b;font-size:12px;line-height:1.5}
+  #msg{margin-top:10px;font-size:13px;white-space:pre-wrap}
+  .ok{color:#0a7d32}.warn{color:#b45309}.err{color:#dc2626}
+  a{color:#0078d4}
+</style>
+</head>
+<body>
+<h1>DB9 Team Translator — Cài đặt</h1>
+<div class="muted">Có key: dịch bằng Gemini AI. Không có key hoặc Gemini lỗi: tự dùng Google Translate.</div>
+
+<div class="card">
+  <label for="key">Gemini API key</label>
+  <input id="key" type="password" autocomplete="off" placeholder="Dán key từ Google AI Studio">
+  <label for="model">Model</label>
+  <input id="model" type="text" placeholder="gemini-3.5-flash-lite">
+  <div class="muted">Key chỉ lưu trên máy này (chrome.storage.local), không nằm trong code hay git.</div>
+  <button id="save">Lưu</button><button id="test" class="sec">Kiểm tra key</button>
+  <div id="msg"></div>
+</div>
+
+<div class="card">
+  <b>Trạng thái Gemini</b>
+  <div id="status" style="margin-top:8px;font-size:13px">—</div>
+  <div id="usage" class="muted" style="margin-top:6px"></div>
+  <div class="muted" style="margin-top:10px">
+    Icon extension có dấu <b style="color:#d97706">!</b> cam = hết lượt/giới hạn (429), <b style="color:#dc2626">!</b> đỏ = key hoặc model lỗi.<br>
+    Xem lượt đã dùng và giới hạn: <a href="https://aistudio.google.com/rate-limit?timeRange=last-28-days" target="_blank">AI Studio → Rate limit</a> ·
+    Quản lý key: <a href="https://aistudio.google.com/apikey" target="_blank">AI Studio → API keys</a>
+  </div>
+</div>
+<script src="options.js"></script>
+</body>
+</html>

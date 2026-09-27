@@ -1,0 +1,78 @@
+{
+  "manifest_version": 3,
+  "name": "DB9 Team Translator",
+  "version": "6.4.0",
+  "description": "DB9 — dịch song ngữ bằng Gemini AI (dự phòng Google) cho Microsoft Teams Web: dịch tin đến sang tiếng Việt, preview bản dịch khi gõ (VI → EN/JA), Ctrl+Enter dịch & gửi. Không chạy trên Teams Desktop (xem README).",
+  "icons": {
+    "16": "icon16.png",
+    "48": "icon48.png",
+    "128": "icon128.png"
+  },
+  "action": {
+    "default_icon": {
+      "16": "icon16.png",
+      "32": "icon32.png"
+    }
+  },
+  "permissions": [
+    "activeTab",
+    "storage"
+  ],
+  "host_permissions": [
+    "*://*.teams.microsoft.com/*",
+    "*://teams.cloud.microsoft/*",
+    "*://*.teams.live.com/*",
+    "*://translate.googleapis.com/*",
+    "*://api.ocr.space/*",
+    "https://generativelanguage.googleapis.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*.teams.microsoft.com/*",
+        "*://teams.cloud.microsoft/*",
+        "*://*.teams.live.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": true
+    },
+    {
+      "matches": [
+        "*://*.teams.microsoft.com/*",
+        "*://teams.cloud.microsoft/*",
+        "*://*.teams.live.com/*"
+      ],
+      "js": [
+        "main-world.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": true,
+      "world": "MAIN"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "icon16.png",
+        "icon32.png",
+        "icon48.png",
+        "icon128.png"
+      ],
+      "matches": [
+        "*://*.teams.microsoft.com/*",
+        "*://teams.cloud.microsoft/*",
+        "*://*.teams.live.com/*"
+      ]
+    }
+  ],
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  }
+}

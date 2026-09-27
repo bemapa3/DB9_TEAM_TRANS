@@ -1,0 +1,32 @@
+# Bí mật — không bao giờ commit
+.env
+*.key
+*api_key*
+*API KEY*
+*.har
+
+# Rác chạy thử / nháp
+_scratch/*
+!_scratch/.gitkeep
+*.log
+*.tmp
+*.bak
+*.bak-*
+
+# Thư viện & cache
+node_modules/
+.venv/
+__pycache__/
+.pytest_cache/
+
+# File build (giữ gói phát hành trong dist nếu cần thì bỏ dòng dưới)
+dist/*
+!dist/.gitkeep
+
+# Nén
+*.rar
+*.7z
+
+# Bản cũ chờ chuyển vào _ARCHIVE
+teams-ext/
+*.zip
