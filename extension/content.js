@@ -147,7 +147,7 @@ function getMessageTextElement(root) {
 function getMessageContainer(el) {
     if (!el) return null;
     return el.closest(
-        '[data-tid="message-pane-item"], [data-tid="chat-pane-item"], [class*="messageListItem"], [class*="fui-ChatMessage"], .ui-chat__message'
+        '[data-tid="message-pane-item"], [data-tid="chat-pane-item"], [class*="messageListItem"], .fui-ChatMessage, .fui-ChatMyMessage, .ui-chat__message'
     );
 }
 
@@ -655,7 +655,12 @@ function foreignOnTop(badge) {
             const x = r.left + r.width * fx;
             if (x < 0 || x > innerWidth) continue;
             const top = document.elementFromPoint(x, y);
-            if (top && !badge.contains(top) && !top.contains(badge) && !top.closest('#ttr-sidebar')) return top;
+            if (!top || badge.contains(top) || top.contains(badge) || top.closest('#ttr-sidebar')) continue;
+            // Chỉ coi là "đè" khi là phần tử nhỏ (reaction/nút). Lớp phủ/khung lớn của Teams → bỏ qua,
+            // nếu không sẽ chừa lề gần bằng cả bề ngang → chữ dồn 1 cột, bong bóng chat kéo dài.
+            const tr = top.getBoundingClientRect();
+            if (tr.width > Math.min(160, r.width * 0.5) || tr.height > 48) continue;
+            return top;
         }
     }
     return null;
@@ -672,12 +677,10 @@ function fixBadgeOverlap(badge) {
     const br = badge.getBoundingClientRect();
     // Cách 1: đẩy xuống dưới phần tử đè
     const oldMb = badge.style.marginBottom;
-    badge.style.marginBottom = Math.ceil(or.height + 6) + 'px';
+    badge.style.marginBottom = Math.min(60, Math.ceil(or.height + 6)) + 'px';
     if (!foreignOnTop(badge)) { badge.dataset.ttrFixed = '1'; return; }
     badge.style.marginBottom = oldMb;
-    // Cách 2: phần tử đè bám theo dòng dịch → chừa lề phía nó đứng
-    if (or.left + or.width / 2 >= br.left + br.width / 2) badge.style.paddingRight = Math.ceil(br.right - or.left + 8) + 'px';
-    else badge.style.paddingLeft = Math.ceil(or.right - br.left + 8) + 'px';
+    // Không chừa lề ngang nữa: lề ngang làm chữ dồn 1 cột → bong bóng kéo dài.
     badge.dataset.ttrFixed = '1';
     ttrLog('fixBadgeOverlap', { with: other.tagName + '.' + String(other.className).slice(0, 60) });
 }
@@ -735,7 +738,10 @@ async function processQueue() {
         badge.className = 'ttr-badge';
         badge.style.cssText = 'color:#005a9e;font-size:12px;font-weight:500;margin-top:3px;padding:3px 8px;background:#e8f4ff;border-left:3px solid #0078d4;border-radius:3px;line-height:1.5;font-style:italic;';
         badge.textContent = '🇻🇳 ' + translated;
-        el.appendChild(badge);
+        // Teams để khối reaction (cao 0px, nội dung tràn) là con cuối của bong bóng →
+        // chèn dòng dịch TRƯỚC nó, nếu append sau thì reaction đè lên dòng dịch.
+        const rx = Array.from(el.children).find(c => c.matches(REACTION_SEL));
+        if (rx) el.insertBefore(badge, rx); else el.appendChild(badge);
         setTimeout(() => fixBadgeOverlap(badge), 300);
         getMessageContainer(el)?.setAttribute('data-ttr-host', '1');
 
@@ -749,8 +755,7 @@ async function processQueue() {
     if (document.getElementById('ttr-style')) return;
     const st = document.createElement('style');
     st.id = 'ttr-style';
-    st.textContent = '.ttr-badge{display:block;clear:both;margin-bottom:4px}' +
-        '[data-ttr-host]:has(' + REACTION_SEL + ') .ttr-badge{margin-bottom:26px}';
+    st.textContent = '.ttr-badge{display:block;clear:both;margin-bottom:4px}';
     (document.head || document.documentElement).appendChild(st);
 })();
 
@@ -774,7 +779,7 @@ function scanMessageDOM(root = getConversationRoot()) {
     if (!root) return;
 
     const containers = root.querySelectorAll(
-        '[data-tid="message-pane-item"], [data-tid="chat-pane-item"], [class*="messageListItem"], [class*="fui-ChatMessage"], .ui-chat__message'
+        '[data-tid="message-pane-item"], [data-tid="chat-pane-item"], [class*="messageListItem"], .fui-ChatMessage, .fui-ChatMyMessage, .ui-chat__message'
     );
 
     let count = 0;
@@ -797,7 +802,7 @@ const mutObs = new MutationObserver((mutations) => {
             for (const node of mutation.addedNodes) {
                 if (!(node instanceof Element)) continue;
                 const container = getMessageContainer(node) || node.querySelector?.(
-                    '[data-tid="message-pane-item"], [data-tid="chat-pane-item"], [class*="messageListItem"], [class*="fui-ChatMessage"], .ui-chat__message'
+                    '[data-tid="message-pane-item"], [data-tid="chat-pane-item"], [class*="messageListItem"], .fui-ChatMessage, .fui-ChatMyMessage, .ui-chat__message'
                 );
                 if (!container) continue;
                 const textEl = getMessageTextElement(container);

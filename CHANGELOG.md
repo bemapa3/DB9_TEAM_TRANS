@@ -2,6 +2,18 @@
 
 Mỗi bản = 1 git tag `vX.Y.Z`. Nguồn version: `versions.json` + `extension/manifest.json`. Mục mới nhất ở TRÊN CÙNG.
 
+## v6.4.1 — 2026-10-01
+
+### ✅ Đã làm
+- **Sửa reaction đè dòng dịch:** Teams để khối reaction (`__reactions`, cao 0px, nội dung tràn) là con cuối của bong bóng → dòng dịch giờ được chèn TRƯỚC khối này thay vì append ở cuối. Bỏ CSS `margin-bottom:26px` khi có reaction.
+- **Sửa bong bóng chat bị kéo dài:** bỏ cách "chừa lề ngang" trong `fixBadgeOverlap` (lề bằng bề rộng reaction > bề rộng dòng dịch → chữ dồn 1 cột). Chỉ còn đẩy xuống (tối đa 60px), chỉ tính phần tử nhỏ (≤160px, ≤48px cao).
+- **Không dịch nhầm dòng tên người gửi:** selector khung tin đổi `[class*="fui-ChatMessage"]` → `.fui-ChatMessage, .fui-ChatMyMessage` (cũ khớp cả `__author`, `__timestamp`…).
+- Kiểm chứng trên Teams Web thật (teams.cloud.microsoft): append cuối → 6 điểm bị Toolbar/Button đè; chèn trước reaction → 0 điểm. 94/94 khung tin tìm đúng `chat-pane-message`. Chủ xác nhận hết lỗi.
+
+### ⏳ Chưa làm / chưa kiểm chứng
+- Chưa chạy lại 3 test mock (`tests/`) sau bản sửa.
+- Tin do chính mình gửi (bằng tiếng Anh) vẫn được dịch ngược sang tiếng Việt.
+
 ## v6.4.0 — 2026-09-28
 
 ### ✅ Đã làm

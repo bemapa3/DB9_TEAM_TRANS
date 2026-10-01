@@ -2,7 +2,7 @@
 
 > Trạng thái DUY NHẤT của project. Cập nhật cuối mỗi phiên. Giữ file ngắn: xoá dòng cũ không còn đúng.
 
-**Cập nhật:** 2026-09-28 · **Bởi:** Claude · **Version:** 6.4.0
+**Cập nhật:** 2026-10-01 · **Bởi:** Claude · **Version:** 6.4.1
 
 ## Bản đồ module
 
@@ -35,7 +35,7 @@
 
 ## File sửa trong phiên gần nhất
 
-- `extension/content.js`, `extension/manifest.json`, `extension/background.js` (chỉ đổi comment đầu file).
+- `extension/content.js` (chèn dòng dịch trước reaction, bỏ lề ngang, sửa selector khung tin), `extension/manifest.json`.
 
 ## Ý tưởng sau (không làm khi chưa được giao)
 
