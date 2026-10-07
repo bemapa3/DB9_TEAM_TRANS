@@ -2,6 +2,18 @@
 
 Mỗi bản = 1 git tag `vX.Y.Z`. Nguồn version: `versions.json` + `extension/manifest.json`. Mục mới nhất ở TRÊN CÙNG.
 
+## v6.4.2 — 2026-10-07
+
+### ✅ Đã làm
+- **Dòng dịch tin đến giữ xuống dòng như chat gốc:** `getIncomingText` trước đây gộp mọi khoảng trắng thành 1 dấu cách → giờ duyệt DOM, mỗi khối (`p`/`div`/`li`) = 1 dòng, `<br>` = xuống dòng, đoạn trống = dòng trống (vẫn bỏ quote/reaction). Dòng dịch thêm `white-space:pre-wrap`.
+- Tin đến dịch qua `translateStructuredText` (theo từng đoạn). Nếu Google trả về lệch số dòng so với bản gốc → tự dịch lại từng dòng (không áp dụng cho Gemini).
+- Kiểm chứng: `node --check` đạt; trang Teams giả chạy trong trình duyệt (Google giả cố tình gộp dòng): tin 5 dòng + 1 dòng trống → dòng dịch đủ 5 dòng + 1 dòng trống, quote không bị dịch, tin VI không có badge, console không lỗi.
+
+### ⏳ Chưa làm / chưa kiểm chứng
+- ⏳ Chưa kiểm trên Teams thật (cấu trúc DOM tin nhiều dòng của Teams là suy đoán `p`/`br`; cách duyệt dựa trên `display` nên không phụ thuộc tên thẻ).
+- Chưa chạy 3 test Playwright trong `tests/` (máy chưa cài `playwright`); `test_content_mock.js` đã thêm 1 tin nhiều dòng.
+- Tin nhiều dòng tốn nhiều lượt gọi Google hơn (1 lượt/đoạn, tệ nhất 1 lượt/dòng).
+
 ## v6.4.1 — 2026-10-01
 
 ### ✅ Đã làm

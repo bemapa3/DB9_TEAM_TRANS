@@ -33,7 +33,7 @@
 node --check extension\content.js; node --check extension\background.js
 npm i -D playwright ; node tests\test_content_mock.js   # cần Chromium của Playwright
 ```
-Kết quả đúng: `errors: []`, `sidebarBeforeFocus: false`, 2 badge (EN + JA, không có tin VI), preview giữ xuống dòng, `counts.iframe: 0`.
+Kết quả đúng: `errors: []`, `sidebarBeforeFocus: false`, 3 badge (EN + JA + tin nhiều dòng giữ xuống dòng, không có tin VI), preview giữ xuống dòng, `counts.iframe: 0`.
 Test tay trên Teams thật: xem `docs/STATE.md`.
 
 ## 5. Cài vào trình duyệt

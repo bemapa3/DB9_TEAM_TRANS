@@ -207,7 +207,14 @@ async function translateStructuredText(text, sl, tl, ai = false) {
             continue;
         }
 
-        const translated = await translateText(segment.text, sl, tl, ai);
+        let translated = await translateText(segment.text, sl, tl, ai);
+        // Google đôi khi gộp dòng: số dòng lệch bản gốc thì dịch lại từng dòng (không áp dụng cho Gemini để khỏi tốn lượt)
+        const srcLines = segment.text.split('\n');
+        if (!ai && translated && srcLines.length > 1 && translated.split('\n').length !== srcLines.length) {
+            const parts = [];
+            for (const line of srcLines) parts.push((await translateText(line, sl, tl)) || line);
+            translated = parts.join('\n');
+        }
         out.push(translated || segment.text);
     }
 
@@ -685,11 +692,29 @@ function fixBadgeOverlap(badge) {
     ttrLog('fixBadgeOverlap', { with: other.tagName + '.' + String(other.className).slice(0, 60) });
 }
 
+// Lấy chữ của tin, GIỮ xuống dòng như chat gốc: mỗi khối (p/div/li...) = 1 dòng, <br> = xuống dòng,
+// đoạn trống = dòng trống. Bỏ quote, reaction, dòng dịch cũ.
 function getIncomingText(el) {
-    if (!el.querySelector(QUOTE_SEL + ', ' + REACTION_SEL + ', .ttr-badge')) return normalizeText(el.innerText || '');
-    const clone = el.cloneNode(true);
-    clone.querySelectorAll(QUOTE_SEL + ', ' + REACTION_SEL + ', .ttr-badge').forEach(n => n.remove());
-    return normalizeText(clone.textContent || '');
+    const skipSel = QUOTE_SEL + ', ' + REACTION_SEL + ', .ttr-badge';
+    let out = '';
+    const walk = (node) => {
+        for (const n of node.childNodes) {
+            if (n.nodeType === 3) {
+                const t = n.nodeValue.replace(/[ \t\r\n]+/g, ' ');
+                if (t === ' ' && (!out || out.endsWith('\n'))) continue;
+                out += t;
+                continue;
+            }
+            if (n.nodeType !== 1 || n.matches(skipSel)) continue;
+            if (n.tagName === 'BR') { out += '\n'; continue; }
+            const block = /^(block|list-item|flex|grid|table|table-row)/.test(getComputedStyle(n).display);
+            if (block && out && !out.endsWith('\n')) out += '\n';
+            walk(n);
+            if (block && !out.endsWith('\n')) out += '\n';
+        }
+    };
+    walk(el);
+    return out.split('\n').map(l => l.replace(/ /g, ' ').trim()).join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
 function enqueueForTranslation(el) {
@@ -728,7 +753,7 @@ async function processQueue() {
 
         processed.add(el);
 
-        const translated = await translateText(text, 'auto', 'vi');
+        const translated = await translateStructuredText(text, 'auto', 'vi');
         if (!translated) continue;
 
         const norm = s => s.toLowerCase().replace(/\s+/g, '').slice(0, 50);
@@ -736,7 +761,7 @@ async function processQueue() {
 
         const badge = document.createElement('div');
         badge.className = 'ttr-badge';
-        badge.style.cssText = 'color:#005a9e;font-size:12px;font-weight:500;margin-top:3px;padding:3px 8px;background:#e8f4ff;border-left:3px solid #0078d4;border-radius:3px;line-height:1.5;font-style:italic;';
+        badge.style.cssText = 'color:#005a9e;font-size:12px;font-weight:500;margin-top:3px;padding:3px 8px;background:#e8f4ff;border-left:3px solid #0078d4;border-radius:3px;line-height:1.5;font-style:italic;white-space:pre-wrap;';
         badge.textContent = '🇻🇳 ' + translated;
         // Teams để khối reaction (cao 0px, nội dung tràn) là con cuối của bong bóng →
         // chèn dòng dịch TRƯỚC nó, nếu append sau thì reaction đè lên dòng dịch.

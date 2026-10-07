@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "DB9 Team Translator",
-  "version": "6.4.1",
+  "version": "6.4.2",
   "description": "DB9 — dịch song ngữ bằng Gemini AI (dự phòng Google) cho Microsoft Teams Web: dịch tin đến sang tiếng Việt, preview bản dịch khi gõ (VI → EN/JA), Ctrl+Enter dịch & gửi. Không chạy trên Teams Desktop (xem README).",
   "icons": {
     "16": "icon16.png",

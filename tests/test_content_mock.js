@@ -7,6 +7,12 @@ const html = `<html><body>
  <div data-tid="chat-pane-item"><div data-tid="chat-pane-message">Please send the updated floor plan tomorrow morning</div></div>
  <div data-tid="chat-pane-item"><div data-tid="chat-pane-message">明日までに図面を送ってください</div></div>
  <div data-tid="chat-pane-item"><div data-tid="chat-pane-message">Anh gửi em bản vẽ mặt bằng nhé</div></div>
+ <div data-tid="chat-pane-item"><div data-tid="chat-pane-message">
+   <p>Here is what we need help from you:</p>
+   <p>&nbsp;</p>
+   <p>(1) Type 3 villa (VLT3): Model outdoor/hardscape</p>
+   <p>(2) Type 3 villa (VLT3): Model the landscape<br>---<br>(3) Model the landscape Palettes</p>
+ </div></div>
 </div>
 <div data-tid="ckeditor"><div contenteditable="true" aria-label="Type a message" id="ed" style="min-height:40px;width:400px"></div></div>
 <iframe id="fr" srcdoc="<html><body><p>other frame content here</p></body></html>" style="width:300px;height:100px"></iframe>

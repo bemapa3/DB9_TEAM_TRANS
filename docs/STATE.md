@@ -2,7 +2,7 @@
 
 > Trạng thái DUY NHẤT của project. Cập nhật cuối mỗi phiên. Giữ file ngắn: xoá dòng cũ không còn đúng.
 
-**Cập nhật:** 2026-10-01 · **Bởi:** Claude · **Version:** 6.4.1
+**Cập nhật:** 2026-10-07 · **Bởi:** Claude · **Version:** 6.4.2
 
 ## Bản đồ module
 
@@ -19,7 +19,7 @@
 ## NEXT_STEP
 
 1. Chủ test tay trên Teams Web (Load unpacked thư mục `extension/`):
-   a) mở 1 chat có tin tiếng Anh/Nhật → có dòng 🇻🇳 dưới tin;
+   a) mở 1 chat có tin tiếng Anh/Nhật → có dòng 🇻🇳 dưới tin; tin nhiều dòng → dòng dịch xuống dòng đúng như tin gốc (v6.4.2);
    b) bấm vào ô chat → sidebar hiện **1 cái**;
    c) gõ 2 dòng tiếng Việt → preview giữ 2 dòng;
    d) Ctrl+Enter → tin gửi đi là bản dịch (toast ✅ Đã gửi);
@@ -35,7 +35,7 @@
 
 ## File sửa trong phiên gần nhất
 
-- `extension/content.js` (chèn dòng dịch trước reaction, bỏ lề ngang, sửa selector khung tin), `extension/manifest.json`.
+- `extension/content.js` (`getIncomingText` giữ xuống dòng, `translateStructuredText` dịch lại từng dòng khi lệch số dòng, badge `pre-wrap`), `tests/test_content_mock.js`, `extension/manifest.json`.
 
 ## Ý tưởng sau (không làm khi chưa được giao)
 
