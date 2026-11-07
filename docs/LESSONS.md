@@ -23,3 +23,5 @@
 - 🔴 Teams ảo hoá danh sách tin + React xoá phần chèn thêm → đánh dấu "đã xử lý" theo phần tử (WeakSet) làm mất dịch vĩnh viễn → 🟢 nhớ kết quả theo NỘI DUNG tin, mỗi lượt quét chèn lại badge còn thiếu; đừng `unobserve` vĩnh viễn.
 - 🔴 Debounce MutationObserver trên Teams có thể không bao giờ chạy (DOM đổi liên tục: online, đang gõ) → 🟢 throttle.
 - 🔴 Google `sl=auto` nhận câu tiếng Anh mở đầu bằng tên Việt là `vi` → trả nguyên văn → 🟢 xem `data[2]`, dịch lại với `sl=en`.
+- 🔴 IntersectionObserver mặc định (root = cửa sổ) + `rootMargin` không dịch trước được trên Teams: khung chat tự cuộn bên trong cắt mất phần ngoài → 🟢 đặt `root` = khung cuộn của danh sách tin.
+- 🔴 Polling `innerText` ô soạn (setInterval) ép tính lại bố cục liên tục → gõ khựng → 🟢 chạy theo sự kiện input/keydown + debounce.

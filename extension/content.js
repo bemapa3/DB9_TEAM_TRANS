@@ -396,9 +396,10 @@ function getEditorRawText(editor) {
 }
 
 const PREVIEW_STABLE_MS = 700;
-let previewSeenText = '';
-let previewSeenAt = 0;
+let previewSeenText = ''; // giữ cho Ctrl+Enter (đồng bộ với preview)
 
+// Bản cũ chạy setInterval 250ms đọc innerText ô soạn (ép trình duyệt tính lại bố cục 4 lần/giây
+// suốt lúc ô chat được focus) → gõ bị khựng. Giờ chỉ chạy khi có phím/nhập liệu, sau khi ngừng gõ 700ms.
 async function updatePreview() {
     const prev = document.getElementById('ttr-prev');
     if (!prev || collapsed) return;
@@ -415,15 +416,7 @@ async function updatePreview() {
     }
     if (raw === lastPreviewSource) return;
 
-    // Chờ người dùng ngừng gõ rồi mới gọi API
-    const now = Date.now();
-    if (raw !== previewSeenText) {
-        previewSeenText = raw;
-        previewSeenAt = now;
-        return;
-    }
-    if (now - previewSeenAt < PREVIEW_STABLE_MS) return;
-
+    previewSeenText = raw;
     lastPreviewSource = raw;
     prev.textContent = '⏳...';
 
@@ -438,10 +431,23 @@ async function updatePreview() {
     }
 }
 
-let previewInterval = null;
+let previewTimerId = null;
+function schedulePreview(e) {
+    if (!sidebar || collapsed) return;
+    if (e && !isChatInput(e.target)) return;
+    clearTimeout(previewTimerId);
+    previewTimerId = setTimeout(updatePreview, PREVIEW_STABLE_MS);
+}
+
+let previewListening = false;
 function startPreviewLoop() {
-    if (previewInterval) return;
-    previewInterval = setInterval(updatePreview, 250);
+    if (previewListening) return;
+    previewListening = true;
+    // keydown bắt cả Enter (Teams tự xoá ô soạn sau khi gửi, không phát sự kiện input)
+    for (const type of ['input', 'keydown', 'paste', 'cut', 'drop', 'compositionend']) {
+        document.addEventListener(type, schedulePreview, true);
+    }
+    document.addEventListener('focusin', schedulePreview, true);
 }
 
 // ============================================================
@@ -652,11 +658,10 @@ function likelyNameLine(text) {
     return words.length <= 5 && /^[\p{L}\p{M}.'’ -]+$/u.test(clean);
 }
 
-function shouldSkipElement(el, text) {
+function shouldSkipElement(el, text, root = getConversationRoot()) {
     if (!el || !text) return true;
     
     // Đảm bảo phần tử nằm trong vùng chat chính (main / chat pane)
-    const root = getConversationRoot();
     if (root && !root.contains(el)) return true;
 
     if (el.closest('#ttr-sidebar')) return true;
@@ -779,7 +784,6 @@ const QUEUE_WORKERS = 3;
 let activeWorkers = 0;
 
 const visibleBodies = new Set();
-const watchedBodies = new WeakSet();
 const bodyOfContainer = new WeakMap();
 const textMemo = new WeakMap();  // el -> { sig, text }
 
@@ -838,7 +842,7 @@ function setState(el, st) {
     if (el.dataset.ttrState !== st) el.dataset.ttrState = st;
 }
 
-function handleBody(el) {
+function handleBody(el, root) {
     const text = readText(el);
     const existing = el.querySelector('.ttr-badge');
     if (existing) {
@@ -847,7 +851,7 @@ function handleBody(el) {
     }
     // Chưa có chữ (Teams đang dựng) → bỏ qua lượt này, lượt sau xét lại (không đánh dấu bỏ vĩnh viễn)
     if (!text || text.length < 5 || text.length > 2000) { setState(el, 'short'); return; }
-    if (shouldSkipElement(el, text)) { setState(el, 'skip'); return; }
+    if (shouldSkipElement(el, text, root)) { setState(el, 'skip'); return; }
 
     if (resultByText.has(text)) {
         const tr = resultByText.get(text);
@@ -906,46 +910,86 @@ async function queueWorker() {
     (document.head || document.documentElement).appendChild(st);
 })();
 
-// Theo dõi liên tục tin nào đang gần màn hình (KHÔNG unobserve sau lần đầu như bản cũ)
-const intObs = new IntersectionObserver((entries) => {
-    for (const entry of entries) {
-        if (entry.isIntersecting) visibleBodies.add(entry.target);
-        else visibleBodies.delete(entry.target);
+// Theo dõi liên tục tin nào đang gần màn hình (KHÔNG unobserve sau lần đầu như bản cũ).
+// root = khung cuộn của danh sách tin: nếu để mặc định (cửa sổ), rootMargin không có tác dụng vì khung chat
+// tự cuộn bên trong và cắt mất phần ngoài → tin chỉ được dịch khi đã lên màn hình. Gắn đúng khung cuộn
+// thì tin sắp cuộn tới (±400px) được dịch trước.
+let intObs = null;
+let intObsRoot = null;
+
+function findScrollParent(el) {
+    for (let p = el?.parentElement; p && p !== document.body; p = p.parentElement) {
+        const oy = getComputedStyle(p).overflowY;
+        if ((oy === 'auto' || oy === 'scroll' || oy === 'overlay') && p.scrollHeight > p.clientHeight) return p;
     }
-    scheduleScan();
-}, { threshold: 0, rootMargin: '300px 0px' });
+    return null;
+}
+
+let lastScrollProbe = 0;
+function ensureIntObs(convRoot) {
+    // Đã có observer gắn đúng khung cuộn còn chứa khung chat → giữ nguyên
+    if (intObs && intObsRoot && intObsRoot.isConnected && intObsRoot.contains(convRoot)) return;
+    // Chưa tìm được khung cuộn (lúc mới tải Teams chưa cuộn được): chỉ dò lại mỗi 2s
+    if (intObs && !intObsRoot && performance.now() - lastScrollProbe < 2000) return;
+    lastScrollProbe = performance.now();
+    const scroller = findScrollParent(convRoot);
+    if (intObs && !intObsRoot && !scroller) return; // vẫn chưa có, giữ observer theo cửa sổ
+    if (intObs) intObs.disconnect();
+    visibleBodies.clear();
+    intObsRoot = scroller;
+    intObs = new IntersectionObserver((entries) => {
+        for (const entry of entries) {
+            if (entry.isIntersecting) visibleBodies.add(entry.target);
+            else visibleBodies.delete(entry.target);
+        }
+        scheduleScan();
+    }, { root: intObsRoot, threshold: 0, rootMargin: '400px 0px' });
+    watchGen++; // mọi tin phải được observe lại với observer mới
+}
+
+let watchGen = 0;
+const watchedGen = new WeakMap(); // el -> thế hệ observer đang theo dõi nó
 
 function watchBody(el) {
-    if (watchedBodies.has(el)) return;
-    watchedBodies.add(el);
+    if (watchedGen.get(el) === watchGen) return;
+    watchedGen.set(el, watchGen);
     intObs.observe(el);
 }
 
 function registerContainers(root) {
     for (const container of root.querySelectorAll(MSG_CONTAINER_SEL)) {
-        const known = bodyOfContainer.get(container);
-        if (known && known.isConnected && container.contains(known)) continue;
-        const body = findBody(container);
-        if (!body) continue;
-        bodyOfContainer.set(container, body);
+        let body = bodyOfContainer.get(container);
+        if (!body || !body.isConnected || !container.contains(body)) {
+            body = findBody(container);
+            if (!body) continue;
+            bodyOfContainer.set(container, body);
+        }
         watchBody(body);
     }
+}
+
+let convRoot = null;
+function currentRoot() {
+    if (!convRoot || !convRoot.isConnected) convRoot = getConversationRoot();
+    return convRoot;
 }
 
 function runScan() {
     scanTimer = null;
     lastScanAt = performance.now();
-    const root = getConversationRoot();
+    if (document.hidden) return; // tab ẩn: không làm gì, khi hiện lại sẽ quét (visibilitychange)
+    const root = currentRoot();
     if (!root) return;
+    ensureIntObs(root);
     registerContainers(root);
     for (const el of visibleBodies) {
         if (!el.isConnected) {
             // Teams có thể gắn LẠI đúng phần tử này sau khi cuộn → phải cho phép theo dõi lại
-            visibleBodies.delete(el); intObs.unobserve(el); watchedBodies.delete(el);
+            visibleBodies.delete(el); intObs.unobserve(el); watchedGen.delete(el);
             continue;
         }
         // Một tin lỗi không được chặn các tin phía sau trong cùng lượt quét
-        try { handleBody(el); } catch (err) { console.warn('[TTR] handleBody error:', err.message); }
+        try { handleBody(el, root); } catch (err) { console.warn('[TTR] handleBody error:', err.message); }
     }
     pumpQueue();
     root.querySelectorAll('.ttr-badge:not([data-ttr-fixed])').forEach(fixBadgeOverlap);
@@ -966,17 +1010,23 @@ function isOwnNode(n) {
     return n.nodeType === 1 && (n.classList?.contains('ttr-badge') || n.id === 'ttr-toast' || n.id === 'ttr-sidebar');
 }
 
+// Chỉ quan tâm thay đổi TRONG khung chat. Thay đổi ở danh sách bên trái (chấm online, giờ, đang gõ…)
+// trước đây cũng kích hoạt quét liên tục. Khi khung chat bị thay (đổi cuộc trò chuyện) thì vẫn quét.
 const mutObs = new MutationObserver((mutations) => {
+    const root = convRoot && convRoot.isConnected ? convRoot : null;
     for (const m of mutations) {
         const t = m.target;
+        if (root && !root.contains(t) && !t.contains?.(root)) continue;
         if (t.nodeType === 1 && t.closest?.('#ttr-sidebar, #ttr-toast, .ttr-badge')) continue;
         // Chỉ thêm badge của mình → bỏ qua. Badge BỊ XOÁ (React dọn) thì vẫn quét để chèn lại.
         if (m.removedNodes.length === 0 && m.addedNodes.length > 0 && Array.from(m.addedNodes).every(isOwnNode)) continue;
         scheduleScan();
         return;
     }
+    if (!root) scheduleScan(); // chưa tìm thấy / mất khung chat → quét để tìm lại
 });
 mutObs.observe(document.body, { childList: true, subtree: true });
+document.addEventListener('visibilitychange', () => { if (!document.hidden) scheduleScan(); });
 
 setTimeout(scheduleScan, 1200);
 setTimeout(scheduleScan, 3500);

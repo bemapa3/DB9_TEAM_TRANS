@@ -2,6 +2,20 @@
 
 Mỗi bản = 1 git tag `vX.Y.Z`. Nguồn version: `versions.json` + `extension/manifest.json`. Mục mới nhất ở TRÊN CÙNG.
 
+## v6.4.6 — 2026-11-08
+
+### ✅ Đã làm
+- **Gõ chữ không còn bị quét liên tục:** preview trước chạy `setInterval` 250ms đọc `innerText` ô soạn (ép trình duyệt tính lại bố cục 4 lần/giây suốt lúc ô chat được focus). Giờ chỉ chạy theo sự kiện (phím, nhập, dán, cắt, focus) sau khi ngừng gõ 700ms.
+- **Bỏ qua thay đổi ngoài khung chat:** chấm online, giờ, "đang gõ" ở danh sách bên trái trước cũng kích hoạt quét; giờ MutationObserver chỉ quét khi thay đổi nằm trong khung chat (hoặc khung chat bị thay khi đổi cuộc trò chuyện). Tab ẩn thì không quét, hiện lại thì quét.
+- **Dịch trước tin sắp cuộn tới:** `rootMargin` của IntersectionObserver không có tác dụng trên Teams vì khung chat tự cuộn bên trong (observer theo cửa sổ bị cắt mất) → tin chỉ được dịch khi đã lên màn hình. Giờ gắn observer vào đúng khung cuộn, dịch trước ±400px.
+- Bớt `querySelector` lặp: khung chat được nhớ, truyền vào kiểm tra từng tin.
+- **Test:** thêm `tests/test_scroll_virtual_mock.js` (danh sách ảo hoá + dựng lại tin + rail đổi liên tục): v6.4.6 PASS, v6.4.4 FAIL (sau khi dựng lại 0/7 tin có dịch) → test bắt đúng lỗi. Sửa `tests/test_background_gemini.js`: Google giả thiếu `ok:true` từ v6.4.3 nên test luôn FAIL; thêm ca Google nhận nhầm `vi` → phải dịch lại `sl=en`, tin VI không dấu không bị ép dịch. Cả 4 test PASS (chạy Playwright trong môi trường Claude).
+- **Đo CPU** (trang Teams giả, Chrome, 2 lượt/bản): phần extension tốn thêm ~10–20ms script mỗi 5s so với không cài (<0,5% CPU) khi ngồi yên/cuộn/gõ; chỗ khựng khi cuộn chủ yếu do trang tự dựng lại tin.
+
+### ⏳ Chưa làm / chưa kiểm chứng
+- ⏳ Kiểm lại trên Teams thật: preview khi gõ, dịch trước khi cuộn, đổi cuộc trò chuyện.
+- Dịch trước làm số lượt gọi Google tăng (~gấp đôi khi cuộn nhiều) — gặp 429 thì giảm `rootMargin` hoặc `QUEUE_WORKERS`.
+
 ## v6.4.5 — 2026-11-08
 
 ### ✅ Đã làm

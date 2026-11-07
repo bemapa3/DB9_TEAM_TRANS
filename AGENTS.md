@@ -24,7 +24,7 @@
 | `extension/main-world.js` | Chạy MAIN world: thay chữ qua `ckeditorInstance.model` khi Ctrl+Enter (nhận/trả sự kiện `ttr:replace`) |
 | `extension/background.js` | Dịch: Gemini API (key trong `chrome.storage.local`) → lỗi thì Google `translate_a/single`; badge trạng thái; OCR (OCR.space demo key) |
 | `extension/options.html/.js` | Trang Cài đặt: key, model, kiểm tra key, trạng thái |
-| `tests/test_content_mock.js`, `tests/test_quote_send_mock.js`, `tests/test_background_gemini.js` | Test content.js trên trang Teams giả (Playwright + Chromium) |
+| `tests/test_content_mock.js`, `tests/test_quote_send_mock.js`, `tests/test_scroll_virtual_mock.js`, `tests/test_background_gemini.js` | Test trên trang Teams giả (Playwright + Chromium); `test_scroll_virtual_mock` = danh sách ảo hoá + dựng lại tin (lỗi mất dịch khi cuộn) |
 | `docs/TEAMS_DESKTOP.md` | Vì sao không chạy trên Teams Desktop + cách dùng PWA |
 
 ## 4. Chạy & kiểm chứng
@@ -34,6 +34,7 @@ node --check extension\content.js; node --check extension\background.js
 npm i -D playwright ; node tests\test_content_mock.js   # cần Chromium của Playwright
 ```
 Kết quả đúng: `errors: []`, `sidebarBeforeFocus: false`, 3 badge (EN + JA + tin nhiều dòng giữ xuống dòng, không có tin VI), preview giữ xuống dòng, `counts.iframe: 0`.
+`node tests\test_scroll_virtual_mock.js` và `node tests\test_background_gemini.js` → in `PASS`.
 Test tay trên Teams thật: xem `docs/STATE.md`.
 
 ## 5. Cài vào trình duyệt

@@ -2,7 +2,7 @@
 
 > Trạng thái DUY NHẤT của project. Cập nhật cuối mỗi phiên. Giữ file ngắn: xoá dòng cũ không còn đúng.
 
-**Cập nhật:** 2026-11-08 · **Bởi:** Claude · **Version:** 6.4.5
+**Cập nhật:** 2026-11-08 · **Bởi:** Claude · **Version:** 6.4.6
 
 ## Bản đồ module
 
@@ -10,8 +10,8 @@
 
 | # | Module | File | Trạng thái | Kiểm chứng bằng |
 |---|---|---|---|---|
-| 1 | Dịch tin đến (cache theo nội dung, quét tin gần màn hình, thử lại khi lỗi) | `extension/content.js` (cuối file) | 🔧 đã chạy trên Teams thật, chờ kiểm lại v6.4.5 | Teams thật + `data-ttr-state` |
-| 2 | Sidebar + preview (lazy theo frame) | `extension/content.js` | 🔧 chờ test Teams thật | test mock |
+| 1 | Dịch tin đến (cache theo nội dung, quét tin gần màn hình, thử lại khi lỗi) | `extension/content.js` (cuối file) | 🔧 đã chạy trên Teams thật (v6.4.5), chờ kiểm v6.4.6 | `tests/test_scroll_virtual_mock.js` + Teams thật |
+| 2 | Sidebar + preview (lazy theo frame, theo sự kiện từ v6.4.6) | `extension/content.js` | 🔧 chờ test Teams thật | test mock |
 | 3 | Ctrl+Enter dịch + gửi (giữ quote) | `extension/content.js` | 🔧 chờ test Teams thật | — |
 | 4 | Dịch Gemini + dự phòng Google + badge | `extension/background.js`, `options.*` | 🔧 chờ chủ kiểm tra key | `tests/test_background_gemini.js` |
 | 5 | OCR / glossary cũ | `extension/background.js` | 🔒 | `node --check` |
@@ -35,6 +35,7 @@
 
 ## File sửa trong phiên gần nhất
 
+- v6.4.6: `extension/content.js` (preview theo sự kiện, MutationObserver chỉ khung chat, IntersectionObserver gắn khung cuộn + dịch trước ±400px, nghỉ khi tab ẩn), `tests/test_scroll_virtual_mock.js` (mới), `tests/test_background_gemini.js` (sửa Google giả + ca nhận nhầm `vi`), `AGENTS.md`, `manifest.json`, `versions.json`.
 - v6.4.5: `extension/content.js` (viết lại phần dịch tin đến: cache theo nội dung, throttle, thử lại, `data-ttr-state`, dịch đoạn song song, so toàn bộ nội dung), `extension/background.js` (`translateGoogle`: nhận nhầm `vi` → dịch lại `sl=en`), `manifest.json`, `versions.json`.
 
 ## Ý tưởng sau (không làm khi chưa được giao)
