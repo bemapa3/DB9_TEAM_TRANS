@@ -13,11 +13,6 @@ function ttrLog(...args) { if (TTR_DEBUG) console.log('[TTR DEBUG]', ...args); }
 
 let targetLang = 'en';
 const translationCache = new Map();
-const observedNodes = new WeakSet();
-const processed = new WeakSet();
-const queued = new WeakSet();
-const translateQueue = [];
-let isProcessing = false;
 let lastPreviewSource = '';
 let lastPreviewTranslation = '';
 let previewTimer = null;
@@ -54,14 +49,26 @@ async function translateText(text, sl, tl, ai = false) {
             }
             return response.text;
         }
+        // Trước đây thất bại ở đây không để lại dấu vết gì → không biết vì sao tin không được dịch
+        console.warn('[TTR] dịch thất bại:', response?.error || response?.message || JSON.stringify(response)?.slice(0, 200));
         return null;
     } catch (e) {
+        // Sau khi reload/cập nhật extension, script cũ trong tab không gọi được nền nữa → mọi lần dịch đều lỗi
+        if (/context invalidated/i.test(e.message || '')) {
+            if (!translateText._warned) {
+                translateText._warned = true;
+                showToast('🔄 Extension vừa được cập nhật — tải lại trang Teams (F5) để dịch tiếp', 10000);
+            }
+            return null;
+        }
         console.warn('[TTR] translate error:', e.message);
         return null;
     }
 }
 
+let lastEngine = '';
 function showEngine(engine) {
+    lastEngine = engine;
     const el = document.getElementById('ttr-engine');
     if (!el) return;
     el.textContent = engine === 'gemini' ? '· Gemini ✨' : (engine === 'google' ? '· Google' : '· Google (Gemini tạm nghỉ)');
@@ -110,6 +117,13 @@ function showToast(msg, dur = 2000) {
 
 function normalizeText(s) {
     return (s || '').replace(/\s+/g, ' ').trim();
+}
+
+const CJK_RE = /[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]/;
+// So sánh TOÀN BỘ nội dung (bản cũ chỉ so 50 ký tự đầu → tin có câu đầu không đổi bị bỏ cả bản dịch)
+function sameText(a, b) {
+    const n = s => (s || '').toLowerCase().replace(/\s+/g, '');
+    return n(a) === n(b);
 }
 
 function isVisible(el) {
@@ -197,27 +211,40 @@ function splitStructuredText(text) {
 }
 
 async function translateStructuredText(text, sl, tl, ai = false) {
+    // Gemini: gửi cả tin 1 lượt (prompt đã yêu cầu giữ xuống dòng) — tách đoạn thì mỗi đoạn chờ 1 lượt Gemini
+    if (ai) {
+        const whole = (text || '').replace(/\r\n/g, '\n').trim();
+        if (!whole) return null;
+        const t = await translateText(whole, sl, tl, true);
+        return t ? t.replace(/\n{3,}/g, '\n\n').trim() : null;
+    }
+
     const segments = splitStructuredText(text);
     if (!segments.length) return null;
 
-    const out = [];
-    for (const segment of segments) {
-        if (segment.type === 'break') {
-            out.push('');
-            continue;
-        }
+    // Dịch các đoạn SONG SONG (bản cũ chờ từng đoạn một → tin nhiều đoạn rất chậm)
+    let anyOk = false;
+    const out = await Promise.all(segments.map(async (segment) => {
+        if (segment.type === 'break') return '';
 
         let translated = await translateText(segment.text, sl, tl, ai);
+        // Tự nhận ngôn ngữ hay nhầm câu tiếng Anh mở đầu bằng tên Việt ("Cường Phạm & Nhật Quang - Please...")
+        // là tiếng Việt → Google trả nguyên văn. Khi đó dịch lại với nguồn = tiếng Anh.
+        if (!ai && sl === 'auto' && translated && sameText(translated, segment.text) && !CJK_RE.test(segment.text)) {
+            translated = (await translateText(segment.text, 'en', tl)) || translated;
+        }
         // Google đôi khi gộp dòng: số dòng lệch bản gốc thì dịch lại từng dòng (không áp dụng cho Gemini để khỏi tốn lượt)
         const srcLines = segment.text.split('\n');
         if (!ai && translated && srcLines.length > 1 && translated.split('\n').length !== srcLines.length) {
-            const parts = [];
-            for (const line of srcLines) parts.push((await translateText(line, sl, tl)) || line);
-            translated = parts.join('\n');
+            const parts = await Promise.all(srcLines.map(line => translateText(line, sl, tl)));
+            translated = parts.map((p, i) => p || srcLines[i]).join('\n');
         }
-        out.push(translated || segment.text);
-    }
+        if (translated) anyOk = true;
+        return translated || segment.text;
+    }));
 
+    // Không đoạn nào dịch được → báo lỗi (để hàng đợi thử lại), không trả về nguyên văn
+    if (!anyOk) return null;
     return out.join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
@@ -450,10 +477,14 @@ document.addEventListener('keydown', async (e) => {
     e.stopPropagation();
     e.stopImmediatePropagation();
 
+    const t0 = performance.now();
+    let tDich = 0;
     const applyTranslation = async (translationText) => {
         const result = await replaceAndSend(ed, translationText);
+        const tGui = ((performance.now() - t0) / 1000 - tDich).toFixed(1);
+        console.log('[TTR] Ctrl+Enter: dịch ' + tDich.toFixed(1) + 's (' + lastEngine + ') · thay+gửi ' + tGui + 's → ' + result);
         if (result === 'sent') {
-            showToast('✅ Đã gửi bản dịch', 2000);
+            showToast('✅ Đã gửi bản dịch · dịch ' + tDich.toFixed(1) + 's (' + lastEngine + ') · gửi ' + tGui + 's', 3000);
             return;
         }
         if (result === 'replaced') {
@@ -470,7 +501,9 @@ document.addEventListener('keydown', async (e) => {
     showToast('⏳ Đang dịch...', 4000);
 
     try {
+        lastEngine = 'cache';
         const translated = await translateStructuredText(txt, 'vi', targetLang, true);
+        tDich = (performance.now() - t0) / 1000;
         if (!translated) {
             showToast('❌ Dịch thất bại - kiểm tra mạng');
             return;
@@ -717,63 +750,152 @@ function getIncomingText(el) {
     return out.split('\n').map(l => l.replace(/ /g, ' ').trim()).join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
-function enqueueForTranslation(el) {
-    if (!el || processed.has(el) || queued.has(el)) return;
-    queued.add(el);
-    translateQueue.push(el);
+// ============================================================
+// CORE (v mới): Teams ẢO HOÁ danh sách tin (cuộn là xoá/dựng lại phần tử) và React
+// hay xoá phần chèn thêm. Nên KHÔNG đánh dấu "đã xử lý" vĩnh viễn theo phần tử nữa:
+// - Bản dịch nhớ theo NỘI DUNG tin (resultByText) → tin dựng lại được chèn lại ngay, không gọi API.
+// - Mỗi lượt quét chỉ xét các tin đang gần màn hình; tin nào thiếu dòng dịch thì chèn lại/xếp hàng.
+// - Dịch lỗi (mạng, 429...) thì thử lại có giãn cách, không bỏ luôn.
+// - Quét bị giới hạn tối đa ~3 lần/giây và bỏ qua thay đổi DOM do chính extension gây ra.
+// ============================================================
+const MSG_CONTAINER_SEL = '[data-tid="message-pane-item"], [data-tid="chat-pane-item"], [class*="messageListItem"], .fui-ChatMessage, .fui-ChatMyMessage, .ui-chat__message';
+const BODY_SEL_LIST = [
+    '[data-tid="chat-pane-message"]',
+    '[data-tid="message-body"]',
+    '[data-tid="threadBodyDisplay"]',
+    '[data-track-module-name="messageBody"]',
+    '[class*="messageBody"]',
+    '[class*="bodyContent"]',
+    '[class*="message-body"]'
+];
+
+const resultByText = new Map(); // text gốc -> bản dịch ('' = không cần dịch)
+const RESULT_MAX = 1000;
+const pendingText = new Set();   // text đang chờ/đang dịch
+const failInfo = new Map();      // text -> { n, until }
+const textQueue = [];            // hàng đợi text, tin mới nhất ở cuối
+const QUEUE_MAX = 40;
+const QUEUE_WORKERS = 3;
+let activeWorkers = 0;
+
+const visibleBodies = new Set();
+const watchedBodies = new WeakSet();
+const bodyOfContainer = new WeakMap();
+const textMemo = new WeakMap();  // el -> { sig, text }
+
+function rememberResult(text, tr) {
+    resultByText.set(text, tr);
+    if (resultByText.size > RESULT_MAX) resultByText.delete(resultByText.keys().next().value);
 }
 
-async function processQueue() {
-    if (isProcessing) return;
-    isProcessing = true;
-
-    while (translateQueue.length > 0) {
-        const el = translateQueue.shift();
-        queued.delete(el);
-
-        if (!el || processed.has(el) || !document.contains(el)) continue;
-        if (el.querySelector('.ttr-badge')) {
-            processed.add(el);
-            continue;
-        }
-
-        const text = getIncomingText(el);
-        if (!text || text.length < 5 || text.length > 2000 || shouldSkipElement(el, text)) {
-            processed.add(el);
-            continue;
-        }
-
-        const viChars = (text.match(/[àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ]/gi) || []).length;
-        const latinChars = (text.match(/[a-zA-Z]/g) || []).length;
-        const cjkChars = (text.match(/[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]/g) || []).length;
-        if (viChars / Math.max(text.length, 1) > 0.1 || (latinChars < 2 && cjkChars < 2)) {
-            processed.add(el);
-            continue;
-        }
-
-        processed.add(el);
-
-        const translated = await translateStructuredText(text, 'auto', 'vi');
-        if (!translated) continue;
-
-        const norm = s => s.toLowerCase().replace(/\s+/g, '').slice(0, 50);
-        if (norm(translated) === norm(text)) continue;
-
-        const badge = document.createElement('div');
-        badge.className = 'ttr-badge';
-        badge.style.cssText = 'color:#005a9e;font-size:12px;font-weight:500;margin-top:3px;padding:3px 8px;background:#e8f4ff;border-left:3px solid #0078d4;border-radius:3px;line-height:1.5;font-style:italic;white-space:pre-wrap;';
-        badge.textContent = '🇻🇳 ' + translated;
-        // Teams để khối reaction (cao 0px, nội dung tràn) là con cuối của bong bóng →
-        // chèn dòng dịch TRƯỚC nó, nếu append sau thì reaction đè lên dòng dịch.
-        const rx = Array.from(el.children).find(c => c.matches(REACTION_SEL));
-        if (rx) el.insertBefore(badge, rx); else el.appendChild(badge);
-        setTimeout(() => fixBadgeOverlap(badge), 300);
-        getMessageContainer(el)?.setAttribute('data-ttr-host', '1');
-
-        await new Promise(r => setTimeout(r, 80));
+// Tìm phần thân tin: thử selector trước (rẻ, không ép layout); không có mới dùng cách cũ
+function findBody(container) {
+    for (const sel of BODY_SEL_LIST) {
+        const found = container.matches(sel) ? container : container.querySelector(sel);
+        if (found) return found;
     }
+    return getMessageTextElement(container);
+}
 
-    isProcessing = false;
+// getIncomingText tốn (getComputedStyle từng nút) → chỉ tính lại khi nội dung đổi
+function readText(el) {
+    const sig = el.textContent;
+    const m = textMemo.get(el);
+    if (m && m.sig === sig) return m.text;
+    const text = getIncomingText(el);
+    textMemo.set(el, { sig, text });
+    return text;
+}
+
+function needsTranslation(text) {
+    // Bỏ link trước khi đếm chữ: tin chỉ có link (Google Drive...) không cần dịch
+    text = text.replace(/https?:\/\/\S+/gi, ' ').replace(/\s+/g, ' ').trim();
+    if (text.length < 5) return false;
+    const viChars = (text.match(/[àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ]/gi) || []).length;
+    const latinChars = (text.match(/[a-zA-Z]/g) || []).length;
+    const cjkChars = (text.match(/[぀-ヿ㐀-鿿가-힯]/g) || []).length;
+    if (viChars / Math.max(text.length, 1) > 0.1) return false;
+    return latinChars >= 2 || cjkChars >= 2;
+}
+
+function insertBadge(el, text, translated) {
+    const badge = document.createElement('div');
+    badge.className = 'ttr-badge';
+    badge.dataset.src = text;
+    badge.style.cssText = 'color:#005a9e;font-size:12px;font-weight:500;margin-top:3px;padding:3px 8px;background:#e8f4ff;border-left:3px solid #0078d4;border-radius:3px;line-height:1.5;font-style:italic;white-space:pre-wrap;';
+    badge.textContent = '🇻🇳 ' + translated;
+    // Teams để khối reaction (cao 0px, nội dung tràn) là con cuối của bong bóng →
+    // chèn dòng dịch TRƯỚC nó, nếu append sau thì reaction đè lên dòng dịch.
+    const rx = Array.from(el.children).find(c => c.matches(REACTION_SEL));
+    if (rx) el.insertBefore(badge, rx); else el.appendChild(badge);
+    setTimeout(() => fixBadgeOverlap(badge), 300);
+    getMessageContainer(el)?.setAttribute('data-ttr-host', '1');
+}
+
+// Ghi trạng thái lên phần tử (data-ttr-state) để kiểm tra được từ DevTools/trang:
+// done · short · skip · vi · queued · fail:N
+function setState(el, st) {
+    if (el.dataset.ttrState !== st) el.dataset.ttrState = st;
+}
+
+function handleBody(el) {
+    const text = readText(el);
+    const existing = el.querySelector('.ttr-badge');
+    if (existing) {
+        if (existing.dataset.src === text) { setState(el, 'done'); return; } // còn nguyên, đúng nội dung
+        existing.remove();                          // tin bị sửa → dịch lại
+    }
+    // Chưa có chữ (Teams đang dựng) → bỏ qua lượt này, lượt sau xét lại (không đánh dấu bỏ vĩnh viễn)
+    if (!text || text.length < 5 || text.length > 2000) { setState(el, 'short'); return; }
+    if (shouldSkipElement(el, text)) { setState(el, 'skip'); return; }
+
+    if (resultByText.has(text)) {
+        const tr = resultByText.get(text);
+        if (tr) { insertBadge(el, text, tr); setState(el, 'done'); }
+        else setState(el, 'vi');
+        return;
+    }
+    if (!needsTranslation(text)) { rememberResult(text, ''); setState(el, 'vi'); return; }
+    enqueueText(text);
+    const f = failInfo.get(text);
+    setState(el, f ? 'fail:' + f.n : 'queued');
+}
+
+function enqueueText(text) {
+    if (pendingText.has(text)) return;
+    const f = failInfo.get(text);
+    if (f && Date.now() < f.until) return;
+    pendingText.add(text);
+    textQueue.push(text);
+    // Hàng đợi quá dài (cuộn nhanh) → bỏ tin cũ nhất, khi nào hiện lại sẽ xếp hàng lại
+    while (textQueue.length > QUEUE_MAX) pendingText.delete(textQueue.shift());
+}
+
+function pumpQueue() {
+    while (activeWorkers < QUEUE_WORKERS && textQueue.length > 0) {
+        activeWorkers++;
+        queueWorker().finally(() => { activeWorkers--; });
+    }
+}
+
+async function queueWorker() {
+    while (textQueue.length > 0) {
+        const text = textQueue.pop(); // tin mới nhất trước
+        let translated = null;
+        try { translated = await translateStructuredText(text, 'auto', 'vi'); } catch (_) {}
+        pendingText.delete(text);
+        if (translated) {
+            failInfo.delete(text);
+            rememberResult(text, sameText(translated, text) ? '' : translated);
+        } else {
+            const n = (failInfo.get(text)?.n || 0) + 1;
+            const delay = Math.min(60000, 2000 * 2 ** (n - 1)); // 2s, 4s, 8s... tối đa 60s
+            failInfo.set(text, { n, until: Date.now() + delay });
+            ttrLog('translate failed, retry in', delay);
+            setTimeout(scheduleScan, delay + 50);
+        }
+        scheduleScan(); // chèn badge cho mọi tin đang hiện có cùng nội dung
+    }
 }
 
 (function injectTtrStyle() {
@@ -784,63 +906,79 @@ async function processQueue() {
     (document.head || document.documentElement).appendChild(st);
 })();
 
+// Theo dõi liên tục tin nào đang gần màn hình (KHÔNG unobserve sau lần đầu như bản cũ)
 const intObs = new IntersectionObserver((entries) => {
     for (const entry of entries) {
-        if (entry.isIntersecting && !processed.has(entry.target)) {
-            enqueueForTranslation(entry.target);
-            intObs.unobserve(entry.target);
-        }
+        if (entry.isIntersecting) visibleBodies.add(entry.target);
+        else visibleBodies.delete(entry.target);
     }
-    processQueue();
-}, { threshold: 0.05, rootMargin: '150px 0px' });
+    scheduleScan();
+}, { threshold: 0, rootMargin: '300px 0px' });
 
-function registerMessageNode(node) {
-    if (!node || observedNodes.has(node) || processed.has(node)) return;
-    observedNodes.add(node);
-    intObs.observe(node);
+function watchBody(el) {
+    if (watchedBodies.has(el)) return;
+    watchedBodies.add(el);
+    intObs.observe(el);
 }
 
-function scanMessageDOM(root = getConversationRoot()) {
-    if (!root) return;
-
-    const containers = root.querySelectorAll(
-        '[data-tid="message-pane-item"], [data-tid="chat-pane-item"], [class*="messageListItem"], .fui-ChatMessage, .fui-ChatMyMessage, .ui-chat__message'
-    );
-
-    let count = 0;
-    for (const container of containers) {
-        const textEl = getMessageTextElement(container);
-        if (!textEl) continue;
-        const text = normalizeText(textEl.innerText || '');
-        if (!text || shouldSkipElement(textEl, text)) continue;
-        registerMessageNode(textEl);
-        count++;
+function registerContainers(root) {
+    for (const container of root.querySelectorAll(MSG_CONTAINER_SEL)) {
+        const known = bodyOfContainer.get(container);
+        if (known && known.isConnected && container.contains(known)) continue;
+        const body = findBody(container);
+        if (!body) continue;
+        bodyOfContainer.set(container, body);
+        watchBody(body);
     }
+}
 
-    if (count > 0) console.log('[TTR] Registered message nodes:', count);
+function runScan() {
+    scanTimer = null;
+    lastScanAt = performance.now();
+    const root = getConversationRoot();
+    if (!root) return;
+    registerContainers(root);
+    for (const el of visibleBodies) {
+        if (!el.isConnected) {
+            // Teams có thể gắn LẠI đúng phần tử này sau khi cuộn → phải cho phép theo dõi lại
+            visibleBodies.delete(el); intObs.unobserve(el); watchedBodies.delete(el);
+            continue;
+        }
+        // Một tin lỗi không được chặn các tin phía sau trong cùng lượt quét
+        try { handleBody(el); } catch (err) { console.warn('[TTR] handleBody error:', err.message); }
+    }
+    pumpQueue();
+    root.querySelectorAll('.ttr-badge:not([data-ttr-fixed])').forEach(fixBadgeOverlap);
+}
+
+// Giới hạn tần suất (throttle), không phải debounce: Teams đổi DOM liên tục
+// (trạng thái online, đang gõ...) nên debounce kiểu cũ có lúc không bao giờ chạy.
+const SCAN_MIN_GAP = 300;
+let scanTimer = null;
+let lastScanAt = 0;
+function scheduleScan() {
+    if (scanTimer) return;
+    const delay = Math.max(0, SCAN_MIN_GAP - (performance.now() - lastScanAt));
+    scanTimer = setTimeout(runScan, delay);
+}
+
+function isOwnNode(n) {
+    return n.nodeType === 1 && (n.classList?.contains('ttr-badge') || n.id === 'ttr-toast' || n.id === 'ttr-sidebar');
 }
 
 const mutObs = new MutationObserver((mutations) => {
-    clearTimeout(mutObs._t);
-    mutObs._t = setTimeout(() => {
-        for (const mutation of mutations) {
-            for (const node of mutation.addedNodes) {
-                if (!(node instanceof Element)) continue;
-                const container = getMessageContainer(node) || node.querySelector?.(
-                    '[data-tid="message-pane-item"], [data-tid="chat-pane-item"], [class*="messageListItem"], .fui-ChatMessage, .fui-ChatMyMessage, .ui-chat__message'
-                );
-                if (!container) continue;
-                const textEl = getMessageTextElement(container);
-                if (textEl) registerMessageNode(textEl);
-            }
-        }
-        scanMessageDOM();
-        document.querySelectorAll('.ttr-badge:not([data-ttr-fixed])').forEach(fixBadgeOverlap);
-    }, 250);
+    for (const m of mutations) {
+        const t = m.target;
+        if (t.nodeType === 1 && t.closest?.('#ttr-sidebar, #ttr-toast, .ttr-badge')) continue;
+        // Chỉ thêm badge của mình → bỏ qua. Badge BỊ XOÁ (React dọn) thì vẫn quét để chèn lại.
+        if (m.removedNodes.length === 0 && m.addedNodes.length > 0 && Array.from(m.addedNodes).every(isOwnNode)) continue;
+        scheduleScan();
+        return;
+    }
 });
 mutObs.observe(document.body, { childList: true, subtree: true });
 
-setTimeout(() => scanMessageDOM(), 1200);
-setTimeout(() => scanMessageDOM(), 3500);
+setTimeout(scheduleScan, 1200);
+setTimeout(scheduleScan, 3500);
 
 console.log('[DB9 Team Translator v' + TTR_VERSION + '] ready' + (window.top === window ? '' : ' (iframe)'));

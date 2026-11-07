@@ -2,6 +2,44 @@
 
 Mỗi bản = 1 git tag `vX.Y.Z`. Nguồn version: `versions.json` + `extension/manifest.json`. Mục mới nhất ở TRÊN CÙNG.
 
+## v6.4.5 — 2026-11-08
+
+### ✅ Đã làm
+- **Hết mất dịch khi cuộn:** Teams ảo hoá danh sách tin (cuộn là xoá/dựng lại phần tử) và React hay xoá badge. Bản cũ đánh dấu `processed` vĩnh viễn theo phần tử (đánh dấu cả TRƯỚC khi gọi API) + `unobserve` sau lần đầu → tin dựng lại/badge bị xoá/dịch lỗi không bao giờ được dịch lại. Giờ nhớ bản dịch theo **nội dung tin** (`resultByText`), mỗi lượt quét tin gần màn hình thiếu badge thì chèn lại từ bộ nhớ (không gọi API) hoặc xếp hàng; Teams gắn lại đúng phần tử cũ thì theo dõi lại.
+- **Dịch lỗi thì thử lại** giãn cách 2s → 4s → … tối đa 60s; Console in `[TTR] dịch thất bại: <lý do>` (trước im lặng). Sau khi reload extension → toast nhắc F5.
+- **Bớt lag:** bỏ quét toàn bộ tin với `getComputedStyle`/`innerText` mỗi lần DOM đổi; chỉ xét tin gần màn hình, chỉ đọc lại chữ khi nội dung đổi, bỏ qua thay đổi DOM do chính extension; debounce (có lúc không chạy vì Teams đổi DOM liên tục) → throttle ~3 lần/giây. Bỏ log `Registered message nodes`.
+- **Dịch nhanh hơn:** tin nhiều đoạn dịch các đoạn song song (trước tuần tự).
+- **Câu tiếng Anh mở đầu bằng tên Việt** ("Cường Phạm & Nhật Quang - Please share…") trước không được dịch: Google `sl=auto` nhận nhầm là tiếng Việt → trả nguyên văn, content so 50 ký tự đầu thấy trùng → bỏ. `background.js`: Google báo nhận ra `vi` mà câu có ≥2 từ tiếng Anh thông dụng, không có CJK → dịch lại với `sl=en`. `content.js`: so toàn bộ nội dung thay vì 50 ký tự đầu.
+- Tin chỉ có link không gửi đi dịch. Mỗi tin có `data-ttr-state` (`done/queued/fail:N/vi/skip/short`) để kiểm tra bằng DevTools.
+- Kiểm chứng: `node --check` 2 file đạt; trên Teams Web thật (teams.live.com) bản trung gian đã dịch được các tin trước đó bị sót khi cuộn tới ("it needs a sidewalk…", "so it's currently 1m wide…", "Bao will model the streetscape…"); gọi Google thật xác nhận `sl=auto` trả `detected: vi` + nguyên văn, `sl=en` dịch đúng.
+
+### ⏳ Chưa làm / chưa kiểm chứng
+- ⏳ Kiểm lại trên Teams thật tin "Please share…" sau khi nạp v6.4.5 (cần reload extension + F5).
+- Chưa chạy test Playwright (máy chưa cài).
+
+## v6.4.4 — 2026-10-20
+
+### ✅ Đã làm
+- **Ctrl+Enter nhanh hơn với tin nhiều đoạn:** trước tách tin theo dòng trống, mỗi đoạn gọi Gemini 1 lượt nối tiếp (3 đoạn = chờ 3 lượt). Giờ gửi cả tin 1 lượt Gemini (prompt đã yêu cầu giữ xuống dòng). Tin đến/preview (Google) vẫn tách đoạn như cũ.
+- **Đo thời gian:** toast "✅ Đã gửi" + Console (`[TTR] Ctrl+Enter: dịch Xs (engine) · thay+gửi Ys`) để biết chậm ở Gemini hay ở bước gửi.
+- Kiểm chứng: `node --check` 2 file đạt. Đọc tài liệu Gemini (ai.google.dev/gemini-api/docs/thinking): model mặc định `gemini-3.5-flash-lite` đã ở mức thinking thấp nhất (minimal) → không phải nguyên nhân, không sửa.
+
+### ⏳ Chưa làm / chưa kiểm chứng
+- ⏳ Chưa kiểm trên Teams thật; chưa đo Gemini thật (cần key). Cần xem Gemini có giữ đúng dòng trống giữa các đoạn không.
+- Nếu Gemini thật chậm (>2s): cách tiếp theo là dịch trước bằng Gemini khi ngừng gõ (tốn thêm lượt) — chờ thày quyết.
+
+## v6.4.3 — 2026-10-20
+
+### ✅ Đã làm
+- **Dịch tin đến nhanh hơn:** hàng đợi trước chạy tuần tự từng tin (+80ms nghỉ) và dịch từ tin CŨ NHẤT trên cùng → tin mới nhất ở cuối khung chat phải chờ cả màn hình dịch xong. Giờ chạy 4 tin song song, tin mới nhất trước, bỏ nghỉ 80ms.
+- **Google có timeout 8 giây + kiểm HTTP lỗi:** trước không có timeout → 1 lượt treo làm đứng cả hàng đợi.
+- Kiểm chứng: đo Google `translate_a/single` thật ~0,2s/lượt (không phải nguồn chậm); `node --check` 2 file đạt.
+
+### ⏳ Chưa làm / chưa kiểm chứng
+- ⏳ Chưa kiểm trên Teams thật; chưa chạy test Playwright (máy chưa cài).
+- 4 lượt song song có thể làm Google trả 429 nếu mở kênh rất nhiều tin — gặp thì giảm `QUEUE_WORKERS`.
+- Ctrl+Enter (Gemini) chưa đo được tốc độ (cần key của thày).
+
 ## v6.4.2 — 2026-10-07
 
 ### ✅ Đã làm

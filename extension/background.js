@@ -215,10 +215,30 @@ async function setGeminiStatus(info) {
     return changed;
 }
 
+const EN_COMMON = new Set("the a an and or but to of in on at for with from by is are was were be been it its this that these those we you he she they i me my our your their please can could will would should need needs have has had do does did not no yes if so as about all any some more also just".split(" "));
+function countEnglishWords(text) {
+    return (String(text).toLowerCase().match(/[a-z']+/g) || []).filter(w => EN_COMMON.has(w)).length;
+}
+
 async function translateGoogle(text, sl, tl) {
     const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${sl}&tl=${tl}&dt=t&q=${encodeURIComponent(text)}`;
-    const res = await fetch(url);
-    const data = await res.json();
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 8000); // không để 1 lượt treo chặn cả hàng đợi
+    let data;
+    try {
+        const res = await fetch(url, { signal: ctrl.signal });
+        if (!res.ok) throw new Error("Google HTTP " + res.status);
+        data = await res.json();
+    } finally {
+        clearTimeout(timer);
+    }
+    // Tự nhận ngôn ngữ (sl=auto) hay nhầm câu tiếng Anh mở đầu bằng tên Việt
+    // ("Cường Phạm & Nhật Quang - Please share...") là tiếng Việt → Google trả nguyên văn.
+    // Google báo ngôn ngữ nhận được ở data[2]: trùng ngôn ngữ đích mà chữ không có CJK → dịch lại với nguồn = tiếng Anh.
+    // Chỉ thử lại khi câu có ≥2 từ tiếng Anh thông dụng, để không ép dịch tin tiếng Việt gõ không dấu ("em gui nha anh").
+    if (sl === "auto" && data[2] === tl && !/[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]/.test(text) && countEnglishWords(text) >= 2) {
+        return translateGoogle(text, "en", tl);
+    }
     let translated = data[0].map(item => item[0]).join("");
     if (tl === "vi") translated = glossaryPostProcess(translated);
     return translated;
